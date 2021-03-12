@@ -153,7 +153,7 @@ void *kernel_executeMonteCarlo(void *td)
 }
 
 void kernel_measureMonteCarlo(Random R, double *result,
-                       unsigned long *num_cycles, int cores)
+                              unsigned long *num_cycles, int cores)
 {
     /* initialize FFT data as complex (N real/img pairs) */
     int i = 0;
@@ -178,28 +178,21 @@ void kernel_measureMonteCarlo(Random R, double *result,
     *num_cycles = cycles;
 }
 
-void kernel_measureSparseMatMult(Random R, double *res, unsigned long *num_cycles, int cores)
+void *kernel_executeSparseMatMult(void *td)
 {
-    /* initialize vector multipliers and storage for result */
-    /* y = A*y;  */
-
-    double *x = RandomVector(SPARSE_SIZE_M, R);
+    double min_time = ((double)(*(struct thread_data *)td).cores * mintime);
+    double *x = RandomVector(SPARSE_SIZE_M, (*(struct thread_data *)td).R);
     double *y = (double *)malloc(sizeof(double) * SPARSE_SIZE_M);
-
-    double result = 0.0;
-
-    int nr = SPARSE_SIZE_nz / SPARSE_SIZE_M; /* average number of nonzeros per row  */
-    int anz = nr * SPARSE_SIZE_M;            /* _actual_ number of nonzeros         */
-
-    double *val = RandomVector(anz, R);
+    int nr = SPARSE_SIZE_nz / SPARSE_SIZE_M;
+    int anz = nr * SPARSE_SIZE_M;
+    double *val = RandomVector(anz, (*(struct thread_data *)td).R);
     int *col = (int *)malloc(sizeof(int) * SPARSE_SIZE_nz);
     int *row = (int *)malloc(sizeof(int) * (SPARSE_SIZE_M + 1));
     int r = 0;
-    int cycles = 0;
     int i = 0;
-
     Stopwatch Q = new_Stopwatch();
-
+    (*(struct thread_data *)td).cycles = 0;
+    (*(struct thread_data *)td).res = 0.0;
     for (i = 0; i < SPARSE_SIZE_M; i++)
         y[i] = 0.0;
 
@@ -219,29 +212,50 @@ void kernel_measureSparseMatMult(Random R, double *res, unsigned long *num_cycle
         for (i = 0; i < nr; i++)
             col[rowr + i] = i * step;
     }
-
     while (1)
     {
         Stopwatch_resume(Q);
         SparseCompRow_matmult(SPARSE_SIZE_M, y, val, row, col, x, SparseMatMult_CYCLES);
         Stopwatch_stop(Q);
-        if (Stopwatch_read(Q) >= mintime)
+        if (Stopwatch_read(Q) >= min_time)
             break;
 
-        cycles += SparseMatMult_CYCLES;
+        (*(struct thread_data *)td).cycles += SparseMatMult_CYCLES;
     }
-    /* approx Mflops */
-    result = SparseCompRow_num_flops(SPARSE_SIZE_M, SPARSE_SIZE_nz, cycles) /
-             Stopwatch_read(Q) * 1.0e-6;
 
-    Stopwatch_delete(Q);
+    (*(struct thread_data *)td).res = SparseCompRow_num_flops(SPARSE_SIZE_M, SPARSE_SIZE_nz, (*(struct thread_data *)td).cycles) / Stopwatch_read(Q) * 1.0e-6;
     free(row);
     free(col);
     free(val);
     free(y);
     free(x);
+    Stopwatch_delete(Q);
+    pthread_exit(NULL);
+}
 
-    *res = result;
+void kernel_measureSparseMatMult(Random R, double *result,
+                                 unsigned long *num_cycles, int cores)
+{
+    /* initialize FFT data as complex (N real/img pairs) */
+    int i = 0;
+    struct thread_data td[NUM_THREADS];
+    unsigned long threads[NUM_THREADS];
+    double res = 0.0;
+    unsigned long cycles = 0;
+
+    for (i = 0; i < cores; i++)
+    {
+        td[i].R = R;
+        td[i].cores = cores;
+        pthread_create(&threads[i], NULL, kernel_executeSparseMatMult, (void *)&(td[i]));
+    }
+    for (i = 0; i < cores; i++)
+    {
+        pthread_join(threads[i], NULL);
+        res += td[i].res;
+        cycles += td[i].cycles;
+    }
+    *result = res;
     *num_cycles = cycles;
 }
 
