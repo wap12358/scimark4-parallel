@@ -2,7 +2,7 @@
 #define CONSTANTS_H_
 
 #define RANDOM_SEED 101010
-#define mintime (3.1)
+#define mintime (1.0)
 #define NUM_THREADS 64
 #define FFT_CYCLES 500
 #define SOR_CYCLES 300
