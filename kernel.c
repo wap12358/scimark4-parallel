@@ -11,6 +11,12 @@
 #include "array.h"
 #include "kernel.h"
 
+const unsigned int FFT_CYCLES = 500;
+const unsigned int SOR_CYCLES = 300;
+const unsigned int MonteCarlo_CYCLES = 1000000;
+const unsigned int SparseMatMult_CYCLES = 5000;
+const unsigned int LU_CYCLES = 200;
+
 void kernel_measureFFT(unsigned int N, double mintime, Random R,
                        double *res, unsigned long *num_cycles)
 {
@@ -26,7 +32,7 @@ void kernel_measureFFT(unsigned int N, double mintime, Random R,
     while (1)
     {
         Stopwatch_resume(Q);
-        for (i = 0; i < 500; i++)
+        for (i = 0; i < FFT_CYCLES; i++)
         {
             FFT_transform(twiceN, x); /* forward transform */
             FFT_inverse(twiceN, x);   /* backward transform */
@@ -35,7 +41,7 @@ void kernel_measureFFT(unsigned int N, double mintime, Random R,
         if (Stopwatch_read(Q) >= mintime)
             break;
 
-        cycles += 500;
+        cycles += FFT_CYCLES;
     }
     /* approx Mflops */
 
@@ -59,13 +65,13 @@ void kernel_measureSOR(unsigned int N, double min_time, Random R,
     while (1)
     {
         Stopwatch_resume(Q);
-        SOR_execute(N, N, 1.25, G, 300);
+        SOR_execute(N, N, 1.25, G, SOR_CYCLES);
         Stopwatch_stop(Q);
 
         if (Stopwatch_read(Q) >= min_time)
             break;
 
-        cycles += 300;
+        cycles += SOR_CYCLES;
     }
     /* approx Mflops */
 
@@ -88,12 +94,12 @@ void kernel_measureMonteCarlo(double min_time, Random R,
     while (1)
     {
         Stopwatch_resume(Q);
-        MonteCarlo_integrate(1000000);
+        MonteCarlo_integrate(MonteCarlo_CYCLES);
         Stopwatch_stop(Q);
         if (Stopwatch_read(Q) >= min_time)
             break;
 
-        cycles += 1000000;
+        cycles += MonteCarlo_CYCLES;
     }
     /* approx Mflops */
     result = MonteCarlo_num_flops(cycles) / Stopwatch_read(Q) * 1.0e-6;
@@ -149,12 +155,12 @@ void kernel_measureSparseMatMult(unsigned int N, unsigned int nz,
     while (1)
     {
         Stopwatch_resume(Q);
-        SparseCompRow_matmult(N, y, val, row, col, x, 5000);
+        SparseCompRow_matmult(N, y, val, row, col, x, SparseMatMult_CYCLES);
         Stopwatch_stop(Q);
         if (Stopwatch_read(Q) >= min_time)
             break;
 
-        cycles += 5000;
+        cycles += SparseMatMult_CYCLES;
     }
     /* approx Mflops */
     result = SparseCompRow_num_flops(N, nz, cycles) /
@@ -210,7 +216,7 @@ void kernel_measureLU(unsigned int N, double min_time, Random R,
     while (1)
     {
         Stopwatch_resume(Q);
-        for (i = 0; i < 200; i++)
+        for (i = 0; i < LU_CYCLES; i++)
         {
             double lu_center = fabs(lu[N2][N2]);
             Array2D_double_copy(N, N, lu, A);
@@ -227,7 +233,7 @@ void kernel_measureLU(unsigned int N, double min_time, Random R,
         if (Stopwatch_read(Q) >= min_time)
             break;
 
-        cycles += 200;
+        cycles += LU_CYCLES;
     }
 
     /* approx Mflops */

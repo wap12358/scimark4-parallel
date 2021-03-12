@@ -20,9 +20,6 @@ const unsigned int LG_SPARSE_SIZE_M = 100000;
 const unsigned int LG_SPARSE_SIZE_nz = 1000000;
 const unsigned int LG_LU_SIZE = 1000;
 
-/* huge (out-of-cache) problem sizes */
-/* (determined at runtime, but default to "large" sizes) */
-
 /* tiny problem sizes (used to mainly to preload network classes     */
 /*                     for applet, so that network download times    */
 /*                     are factored out of benchmark.)               */
