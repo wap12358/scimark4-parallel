@@ -259,41 +259,33 @@ void kernel_measureSparseMatMult(Random R, double *result,
     *num_cycles = cycles;
 }
 
-void kernel_measureLU(Random R, double *res,
-                      unsigned long *num_cycles, int cores)
+void *kernel_executeLU(void *td)
 {
-
+    double min_time = ((double)(*(struct thread_data *)td).cores * mintime);
     double **A = NULL;
     double **lu = NULL;
     int *pivot = NULL;
-
     Stopwatch Q = new_Stopwatch();
-    double result = 0.0;
-    int i = 0, j = 0;
-    int cycles = 0;
-
-    if ((A = RandomMatrix(LU_SIZE, LU_SIZE, R)) == NULL)
+    int i = 0;
+    int j = 0;
+    (*(struct thread_data *)td).cycles = 0;
+    (*(struct thread_data *)td).res = 0.0;
+    if ((A = RandomMatrix(LU_SIZE, LU_SIZE, (*(struct thread_data *)td).R)) == NULL)
         exit(1);
     if ((lu = new_Array2D_double(LU_SIZE, LU_SIZE)) == NULL)
         exit(1);
     if ((pivot = (int *)malloc(LU_SIZE * sizeof(int))) == NULL)
         exit(1);
-
     for (i = 0; i < LU_SIZE; i++)
         for (j = 0; j < LU_SIZE; j++)
             lu[i][j] = 0.0;
-
-    /* make sure A is diagonally dominant, to avoid singularity */
-    /* set diagonal to be 4 times the absolute value of its row sum */
     for (i = 0; i < LU_SIZE; i++)
     {
         double row_sum = 0.0;
-        /* compute row sum of absoluate values  */
         for (j = 0; j < LU_SIZE; j++)
             row_sum += fabs(A[i][j]);
         A[i][i] = 4 * row_sum;
     }
-
     while (1)
     {
         Stopwatch_resume(Q);
@@ -302,30 +294,49 @@ void kernel_measureLU(Random R, double *res,
             double lu_center = fabs(lu[LU_SIZE / 2][LU_SIZE / 2]);
             Array2D_double_copy(LU_SIZE, LU_SIZE, lu, A);
 
-            /* add modification to A, based on previous LU */
-            /* to avoid being optimized out. */
-            /*   lu_center = max( A_center, old_lu_center) */
-
             lu[LU_SIZE / 2][LU_SIZE / 2] = (A[LU_SIZE / 2][LU_SIZE / 2] > lu_center ? A[LU_SIZE / 2][LU_SIZE / 2] : lu_center);
 
             LU_factor(LU_SIZE, LU_SIZE, lu, pivot);
         }
         Stopwatch_stop(Q);
-        if (Stopwatch_read(Q) >= mintime)
+
+        if (Stopwatch_read(Q) >= min_time)
             break;
 
-        cycles += LU_CYCLES;
+        (*(struct thread_data *)td).cycles += LU_CYCLES;
     }
 
-    /* approx Mflops */
-    result = LU_num_flops(LU_SIZE) * cycles / Stopwatch_read(Q) * 1.0e-6;
+    (*(struct thread_data *)td).res = LU_num_flops(LU_SIZE) * (*(struct thread_data *)td).cycles / Stopwatch_read(Q) * 1.0e-6;
 
-    Stopwatch_delete(Q);
     free(pivot);
-
     Array2D_double_delete(LU_SIZE, LU_SIZE, lu);
     Array2D_double_delete(LU_SIZE, LU_SIZE, A);
+    Stopwatch_delete(Q);
+    pthread_exit(NULL);
+}
 
-    *res = result;
+void kernel_measureLU(Random R, double *result,
+                      unsigned long *num_cycles, int cores)
+{
+    /* initialize FFT data as complex (N real/img pairs) */
+    int i = 0;
+    struct thread_data td[NUM_THREADS];
+    unsigned long threads[NUM_THREADS];
+    double res = 0.0;
+    unsigned long cycles = 0;
+
+    for (i = 0; i < cores; i++)
+    {
+        td[i].R = R;
+        td[i].cores = cores;
+        pthread_create(&threads[i], NULL, kernel_executeLU, (void *)&(td[i]));
+    }
+    for (i = 0; i < cores; i++)
+    {
+        pthread_join(threads[i], NULL);
+        res += td[i].res;
+        cycles += td[i].cycles;
+    }
+    *result = res;
     *num_cycles = cycles;
 }
