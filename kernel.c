@@ -132,26 +132,49 @@ void kernel_measureSOR(Random R, double *result,
     *num_cycles = cycles;
 }
 
-void kernel_measureMonteCarlo(Random R, double *res, unsigned long *num_cycles, int cores)
+void *kernel_executeMonteCarlo(void *td)
 {
-    double result = 0.0;
+    double min_time = ((double)(*(struct thread_data *)td).cores * mintime);
     Stopwatch Q = new_Stopwatch();
-
-    int cycles = 0;
+    (*(struct thread_data *)td).cycles = 0;
+    (*(struct thread_data *)td).res = 0.0;
     while (1)
     {
         Stopwatch_resume(Q);
         MonteCarlo_integrate(MonteCarlo_CYCLES);
         Stopwatch_stop(Q);
-        if (Stopwatch_read(Q) >= mintime)
+        if (Stopwatch_read(Q) >= min_time)
             break;
-
-        cycles += MonteCarlo_CYCLES;
+        (*(struct thread_data *)td).cycles += MonteCarlo_CYCLES;
     }
-    /* approx Mflops */
-    result = MonteCarlo_num_flops(cycles) / Stopwatch_read(Q) * 1.0e-6;
+    (*(struct thread_data *)td).res = MonteCarlo_num_flops((*(struct thread_data *)td).cycles) / Stopwatch_read(Q) * 1.0e-6;
     Stopwatch_delete(Q);
-    *res = result;
+    pthread_exit(NULL);
+}
+
+void kernel_measureMonteCarlo(Random R, double *result,
+                       unsigned long *num_cycles, int cores)
+{
+    /* initialize FFT data as complex (N real/img pairs) */
+    int i = 0;
+    struct thread_data td[NUM_THREADS];
+    unsigned long threads[NUM_THREADS];
+    double res = 0.0;
+    unsigned long cycles = 0;
+
+    for (i = 0; i < cores; i++)
+    {
+        td[i].R = R;
+        td[i].cores = cores;
+        pthread_create(&threads[i], NULL, kernel_executeMonteCarlo, (void *)&(td[i]));
+    }
+    for (i = 0; i < cores; i++)
+    {
+        pthread_join(threads[i], NULL);
+        res += td[i].res;
+        cycles += td[i].cycles;
+    }
+    *result = res;
     *num_cycles = cycles;
 }
 
