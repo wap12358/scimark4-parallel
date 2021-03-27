@@ -17,6 +17,7 @@
 struct thread_data
 {
     Random R;
+    int cores;
     double res;
     unsigned long cycles;
 };
@@ -25,7 +26,7 @@ void *kernel_executeFFT(void *td)
 {
     /* initialize FFT data as complex (N real/img pairs) */
     int i = 0;
-    double min_time = (mintime * NUM_THREADS);
+    double min_time = ((double)(*(struct thread_data *)td).cores * mintime);
     double *x = RandomVector(2 * FFT_SIZE, (*(struct thread_data *)td).R);
     Stopwatch Q = new_Stopwatch();
     (*(struct thread_data *)td).cycles = 0;
@@ -46,7 +47,7 @@ void *kernel_executeFFT(void *td)
         (*(struct thread_data *)td).cycles += FFT_CYCLES;
     }
 
-    (*(struct thread_data *)td).res = FFT_num_flops(FFT_SIZE) * (*(struct thread_data *)td).cycles / Stopwatch_read(Q) * 1.0e-6;
+    (*(struct thread_data *)td).res = FFT_num_flops(FFT_SIZE) * (*(struct thread_data *)td).cycles * (double)(*(struct thread_data *)td).cores / Stopwatch_read(Q) * 1.0e-6;
 
     Stopwatch_delete(Q);
     free(x);
@@ -54,7 +55,7 @@ void *kernel_executeFFT(void *td)
 }
 
 void kernel_measureFFT(Random R, double *result,
-                       unsigned long *num_cycles)
+                       unsigned long *num_cycles, int cores)
 {
     /* initialize FFT data as complex (N real/img pairs) */
     int i = 0;
@@ -63,12 +64,13 @@ void kernel_measureFFT(Random R, double *result,
     double res = 0.0;
     unsigned long cycles = 0;
 
-    for (i = 0; i < NUM_THREADS; i++)
+    for (i = 0; i < cores; i++)
     {
         td[i].R = R;
+        td[i].cores = cores;
         pthread_create(&threads[i], NULL, kernel_executeFFT, (void *)&(td[i]));
     }
-    for (i = 0; i < NUM_THREADS; i++)
+    for (i = 0; i < cores; i++)
     {
         pthread_join(threads[i], NULL);
         res += td[i].res;
@@ -80,7 +82,7 @@ void kernel_measureFFT(Random R, double *result,
 
 void *kernel_executeSOR(void *td)
 {
-    double min_time = (mintime * NUM_THREADS);
+    double min_time = ((double)(*(struct thread_data *)td).cores * mintime);
     double **G = RandomMatrix(SOR_SIZE, SOR_SIZE, (*(struct thread_data *)td).R);
     Stopwatch Q = new_Stopwatch();
     (*(struct thread_data *)td).cycles = 0;
@@ -97,7 +99,7 @@ void *kernel_executeSOR(void *td)
         (*(struct thread_data *)td).cycles += SOR_CYCLES;
     }
 
-    (*(struct thread_data *)td).res = SOR_num_flops(SOR_SIZE, SOR_SIZE, (*(struct thread_data *)td).cycles) / Stopwatch_read(Q) * 1.0e-6;
+    (*(struct thread_data *)td).res = SOR_num_flops(SOR_SIZE, SOR_SIZE, (*(struct thread_data *)td).cycles) * (double)(*(struct thread_data *)td).cores / Stopwatch_read(Q) * 1.0e-6;
 
     Array2D_double_delete(SOR_SIZE, SOR_SIZE, G);
     Stopwatch_delete(Q);
@@ -105,7 +107,7 @@ void *kernel_executeSOR(void *td)
 }
 
 void kernel_measureSOR(Random R, double *result,
-                       unsigned long *num_cycles)
+                       unsigned long *num_cycles, int cores)
 {
     /* initialize FFT data as complex (N real/img pairs) */
     int i = 0;
@@ -114,12 +116,13 @@ void kernel_measureSOR(Random R, double *result,
     double res = 0.0;
     unsigned long cycles = 0;
 
-    for (i = 0; i < NUM_THREADS ; i++)
+    for (i = 0; i < cores; i++)
     {
         td[i].R = R;
+        td[i].cores = cores;
         pthread_create(&threads[i], NULL, kernel_executeSOR, (void *)&(td[i]));
     }
-    for (i = 0; i < NUM_THREADS ; i++)
+    for (i = 0; i < cores; i++)
     {
         pthread_join(threads[i], NULL);
         res += td[i].res;
@@ -131,7 +134,7 @@ void kernel_measureSOR(Random R, double *result,
 
 void *kernel_executeMonteCarlo(void *td)
 {
-    double min_time = (mintime * NUM_THREADS);
+    double min_time = ((double)(*(struct thread_data *)td).cores * mintime);
     Stopwatch Q = new_Stopwatch();
     (*(struct thread_data *)td).cycles = 0;
     (*(struct thread_data *)td).res = 0.0;
@@ -144,13 +147,13 @@ void *kernel_executeMonteCarlo(void *td)
             break;
         (*(struct thread_data *)td).cycles += MonteCarlo_CYCLES;
     }
-    (*(struct thread_data *)td).res = MonteCarlo_num_flops((*(struct thread_data *)td).cycles) / Stopwatch_read(Q) * 1.0e-6;
+    (*(struct thread_data *)td).res = MonteCarlo_num_flops((*(struct thread_data *)td).cycles) * (double)(*(struct thread_data *)td).cores / Stopwatch_read(Q) * 1.0e-6;
     Stopwatch_delete(Q);
     pthread_exit(NULL);
 }
 
 void kernel_measureMonteCarlo(Random R, double *result,
-                              unsigned long *num_cycles)
+                              unsigned long *num_cycles, int cores)
 {
     /* initialize FFT data as complex (N real/img pairs) */
     int i = 0;
@@ -159,12 +162,13 @@ void kernel_measureMonteCarlo(Random R, double *result,
     double res = 0.0;
     unsigned long cycles = 0;
 
-    for (i = 0; i < NUM_THREADS ; i++)
+    for (i = 0; i < cores; i++)
     {
         td[i].R = R;
+        td[i].cores = cores;
         pthread_create(&threads[i], NULL, kernel_executeMonteCarlo, (void *)&(td[i]));
     }
-    for (i = 0; i < NUM_THREADS ; i++)
+    for (i = 0; i < cores; i++)
     {
         pthread_join(threads[i], NULL);
         res += td[i].res;
@@ -176,7 +180,7 @@ void kernel_measureMonteCarlo(Random R, double *result,
 
 void *kernel_executeSparseMatMult(void *td)
 {
-    double min_time = (mintime * NUM_THREADS);
+    double min_time = ((double)(*(struct thread_data *)td).cores * mintime);
     double *x = RandomVector(SPARSE_SIZE_M, (*(struct thread_data *)td).R);
     double *y = (double *)malloc(sizeof(double) * SPARSE_SIZE_M);
     int nr = SPARSE_SIZE_nz / SPARSE_SIZE_M;
@@ -219,7 +223,7 @@ void *kernel_executeSparseMatMult(void *td)
         (*(struct thread_data *)td).cycles += SparseMatMult_CYCLES;
     }
 
-    (*(struct thread_data *)td).res = SparseCompRow_num_flops(SPARSE_SIZE_M, SPARSE_SIZE_nz, (*(struct thread_data *)td).cycles) / Stopwatch_read(Q) * 1.0e-6;
+    (*(struct thread_data *)td).res = SparseCompRow_num_flops(SPARSE_SIZE_M, SPARSE_SIZE_nz, (*(struct thread_data *)td).cycles) * (double)(*(struct thread_data *)td).cores / Stopwatch_read(Q) * 1.0e-6;
     free(row);
     free(col);
     free(val);
@@ -230,7 +234,7 @@ void *kernel_executeSparseMatMult(void *td)
 }
 
 void kernel_measureSparseMatMult(Random R, double *result,
-                                 unsigned long *num_cycles)
+                                 unsigned long *num_cycles, int cores)
 {
     /* initialize FFT data as complex (N real/img pairs) */
     int i = 0;
@@ -239,12 +243,13 @@ void kernel_measureSparseMatMult(Random R, double *result,
     double res = 0.0;
     unsigned long cycles = 0;
 
-    for (i = 0; i < NUM_THREADS ; i++)
+    for (i = 0; i < cores; i++)
     {
         td[i].R = R;
+        td[i].cores = cores;
         pthread_create(&threads[i], NULL, kernel_executeSparseMatMult, (void *)&(td[i]));
     }
-    for (i = 0; i < NUM_THREADS ; i++)
+    for (i = 0; i < cores; i++)
     {
         pthread_join(threads[i], NULL);
         res += td[i].res;
@@ -256,7 +261,7 @@ void kernel_measureSparseMatMult(Random R, double *result,
 
 void *kernel_executeLU(void *td)
 {
-    double min_time = (mintime * NUM_THREADS);
+    double min_time = ((double)(*(struct thread_data *)td).cores * mintime);
     double **A = NULL;
     double **lu = NULL;
     int *pivot = NULL;
@@ -301,7 +306,7 @@ void *kernel_executeLU(void *td)
         (*(struct thread_data *)td).cycles += LU_CYCLES;
     }
 
-    (*(struct thread_data *)td).res = LU_num_flops(LU_SIZE) * (*(struct thread_data *)td).cycles / Stopwatch_read(Q) * 1.0e-6;
+    (*(struct thread_data *)td).res = LU_num_flops(LU_SIZE) * (*(struct thread_data *)td).cycles * (double)(*(struct thread_data *)td).cores / Stopwatch_read(Q) * 1.0e-6;
 
     free(pivot);
     Array2D_double_delete(LU_SIZE, LU_SIZE, lu);
@@ -311,7 +316,7 @@ void *kernel_executeLU(void *td)
 }
 
 void kernel_measureLU(Random R, double *result,
-                      unsigned long *num_cycles)
+                      unsigned long *num_cycles, int cores)
 {
     /* initialize FFT data as complex (N real/img pairs) */
     int i = 0;
@@ -320,12 +325,13 @@ void kernel_measureLU(Random R, double *result,
     double res = 0.0;
     unsigned long cycles = 0;
 
-    for (i = 0; i < NUM_THREADS ; i++)
+    for (i = 0; i < cores; i++)
     {
         td[i].R = R;
+        td[i].cores = cores;
         pthread_create(&threads[i], NULL, kernel_executeLU, (void *)&(td[i]));
     }
-    for (i = 0; i < NUM_THREADS ; i++)
+    for (i = 0; i < cores; i++)
     {
         pthread_join(threads[i], NULL);
         res += td[i].res;

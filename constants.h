@@ -3,7 +3,7 @@
 
 #define RANDOM_SEED 101010
 #define mintime (0.2)
-#define NUM_THREADS 4
+#define NUM_THREADS 64
 #define FFT_CYCLES 500
 #define SOR_CYCLES 300
 #define MonteCarlo_CYCLES 1000000
